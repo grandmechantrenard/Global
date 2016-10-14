@@ -1,206 +1,314 @@
-var nameFontSize = 12;
-var canv = document.getElementById('board');
-var mapDiv = document.getElementById('map');
-var ctx = canv.getContext('2d');
-var currentZoom = 1;
-var zoomLimits = [1, 10];
-var countriesJSON = {};
-var clickStatus = 0;
-var moveStatus= 0;
-var initPosition = [0, 0];
-var offset = [0, 0];
-var offsetInit = [0, 0];
-var emptyColor = "lightblue";
-var unselectedColor = "#F9F9F9";
-var selectedColor = "#FFFF00";
-var minNameSize = 20;
-
-function getCountries(){
-    //TODO HTTP request
-    return { "countries":[
-        {"id": 1, "color": "#00FF00", "name": "R1", "areas":[{"points": [[90, 90], [100, 90], [100, 100], [90, 100]]}]}, 
-        {"id": 2, "color": "#FF0000", "name": "R2", "areas":[{"points": [[90, 100], [110, 100], [110, 120], [90, 120]]}]}, 
-        {"id": 3, "color": "#0000FF", "name": "R3", "areas":[{"points": [[100, 85], [120, 85], [120, 100], [100, 100]]},
-                                                            {"points": [[135, 90], [136, 90], [136, 91], [135, 91]]}]}, 
-        {"id": 4, "color": "#00FFFF", "name": "R4", "areas":[{"points": [[110, 100], [130, 100], [130, 130], [110, 130]]}, 
-                                                   {"points": [[117, 120], [123, 120], [123, 126], [117, 126]], "substract": 1}]}, 
-        {"id": 5, "color": "#FF00FF", "name": "R5", "areas":[{"points": [[117, 120], [123, 120], [123, 126], [117, 126]]}]}
-    ]};
-}
-
-function getCountry(country){
-    //TODO HTTP request
-    if (country){
-        var id = country["id"];
-        switch(id){
-            case 1: return {"id": 1, "name":"R1", "receipes": 5, "areas":[]};
-            case 2: return {"id": 2, "name":"R2", "receipes": 174, "areas":[{"name": "R21", "receipes": 54, "typicalReceipes": 28, "points": [[92, 102], [94, 102], [94, 105], [92, 105]]},
-                                                                           {"name": "R22", "receipes": 32, "typicalReceipes": 15, "points": [[95, 106], [98, 106], [98, 108], [95, 108]]}]};
-            case 3: return {"id": 3, "name":"R3", "receipes": 76, "areas":[{"name": "R31", "points": [[102, 92], [104, 92], [104, 95], [102, 95]]},
-                                                                           {"name": "R32", "points": [[105, 96], [108, 96], [108, 98], [105, 98]]}]};
-            case 4: return {"id": 4, "name":"R4", "receipes": 32, "areas":[]};
-            case 5: return {"id": 5, "name":"R5", "receipes": 4, "areas":[]};
-            default: return null;
+app.controller('worldMapController', function($scope, $window, canvasService, httpService) {  
+    var nameFontSize = 12;
+    var mapDiv = document.getElementById('map');
+    var canv = document.getElementById('board');
+    var ctx = canv.getContext('2d');
+    var currentZoom = 1;
+    var zoomLimits = [1, 10];
+    var clickStatus = 0;
+    var moveStatus= 0;
+    var initPosition = [0, 0];
+    var offset = [0, 0];
+    var offsetInit = [0, 0];
+    var emptyColor = "lightblue";
+    var unselectedColor = "#F9F9F9";
+    var selectedColor = "#FFFF00";
+    var minNameSize = 20;
+    var newArea = {"points": []};
+    var crossSize=4;
+    
+    canv.width = $window.innerWidth;
+    canv.height = $window.innerHeight;
+    $scope.addingRegion = false;
+    $scope.countriesJSON = httpService.getCountries();
+    setCurrentZoom();
+    draw();
+    
+    $scope.zoomIn = function() {
+        zoom(2);
+    }
+    $scope.zoomOut = function() {
+        zoom(0.5);
+    }
+    $scope.move = function(event){
+        if (clickStatus){
+            moveStatus = 1;
+            move(event);
+        }else{
+            display([event.offsetX, event.offsetY]);
         }
     }
-    return null;
-}
-
-function updateLimit(limitJSON, point){                
-    if (!limitJSON["minX"]){
-        limitJSON["minX"] = point[0];
-        limitJSON["minY"] = point[1];
-        limitJSON["maxX"] = point[0];
-        limitJSON["maxY"] = point[1];
-    }else{
-        if (limitJSON["minX"] > point[0]){
-            limitJSON["minX"] = point[0];
-        }
-        if (limitJSON["maxX"] < point[0]){
-            limitJSON["maxX"] = point[0];
-        }
-        if (limitJSON["minY"] > point[1]){
-            limitJSON["minY"] = point[1];
-        }
-        if (limitJSON["maxY"] < point[1]){
-            limitJSON["maxY"] = point[1];
+    $scope.mousedown = function(event){
+        initPosition = [event.offsetX, event.offsetY];
+        clickStatus = 1;
+    }
+    $scope.mouseup = function(event){
+        clickStatus = 0;
+        if (moveStatus == 0){
+            var clickedPoint=[event.offsetX, event.offsetY];
+            if ($scope.addingRegion){
+                newArea["points"][newArea["points"].length]=getRelativePoint(clickedPoint);
+                draw();
+            }else{
+                select(clickedPoint);
+            }
+        }else{
+            moveStatus = 0;
         }
     }
-}
-
-function getLimits(){
-    var limit = {};
-    var countries = countriesJSON["countries"]
-    for (var countryIndex=0; countryIndex < countries.length; countryIndex++){
-        var country=countries[countryIndex];
-        var areas=country["areas"];
-        
-        for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
-            var area=areas[areaIndex];
-            var points = area["points"];
-            
-            for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
-                var point = points[ptIndex];                
-                updateLimit(limit, point);
+    $scope.setSelectedArea = function(area){
+        selectArea(area);
+        draw();
+    }
+    $scope.focusLost = function(){
+        clickStatus = 0;
+    }
+    $scope.startAddingRegion = function(){
+        $scope.addingRegion = true;
+        draw();
+    }
+    $scope.stopAddingRegion = function(validate){
+        $scope.addingRegion = false;
+        if (validate){
+            var countries = getCountriesNewAreaBelongsTo();
+            httpService.addNewArea(newArea, countries);
+            if ($scope.selectedCountry){
+                //TODO ask user area name
+                newArea["name"]="newName";
+                $scope.selectedCountry=httpService.getCountry($scope.selectedCountry);
             }
         }
+        newArea["points"]=[];
+        draw();
     }
-    return limit;
-}
 
-function setCurrentZoom(){    
-    var limit = getLimits();
-    var countriesWidth = limit["maxX"] - limit["minX"];
-    var canvasWidth=getCanvasSize(0);
-    var canvasHeight=getCanvasSize(1);
-    var zoomX=canvasWidth/countriesWidth;
-    
-    var countriesHeight = limit["maxY"] - limit["minY"];
-    var zoomY=canvasHeight/countriesHeight;
-    
-    currentZoom = Math.min(zoomX, zoomY);
-    
-    zoomLimits[0] = currentZoom;
-    zoomLimits[1] = currentZoom*2048;
-    offsetInit = [(canvasWidth-(limit["maxX"]+limit["minX"]))/2, (canvasHeight-(limit["maxY"]+limit["minY"]))/2]
-}
-
-function zoom(factor, scope){
-    var newZoom = currentZoom * factor;
-    if (newZoom >= zoomLimits[0] && newZoom <= zoomLimits[1]){
-        currentZoom = newZoom;
-        offset[0]*=factor;
-        offset[1]*=factor;
-        draw(scope);
-    }
-}
-
-function getCanvasSize(index){
-    switch (index){
-        case 0: return mapDiv.clientWidth;
-        case 1: return mapDiv.clientHeight;
-        default: return 0;
-    }
-}
-
-function getPosition(tab, index){
-    return offset[index] + (offsetInit[index] + tab[index])*currentZoom - getCanvasSize(index)*(currentZoom - 1)/2;
-}
-
-function isACountrySelected(scope){
-    return scope.selectedCountry != undefined;
-}
-
-function isSelectedCountry(scope, countryId){
-    return scope.selectedCountry != undefined && scope.selectedCountry["id"]==countryId;
-}
-
-function drawShape(area, ctx){
-    var points = area["points"];
-    var gravity = [0, 0];
-    var curLimit = {}
-    
-    for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
-        var point = points[ptIndex];
-        var x = getPosition(point, 0);
-        var y = getPosition(point, 1);
-                   
-        updateLimit(curLimit, [x, y]);
-        
-        if (ptIndex == 0){
-            ctx.moveTo(x, y);
+    /**
+     * Get all the countries an area belongs to
+     */
+    function getCountriesNewAreaBelongsTo(){
+        var possibleCountries;
+        if (isACountrySelected()){
+            possibleCountries=[$scope.selectedCountry];
         }else{
-            ctx.lineTo(x, y);
+            possibleCountries=$scope.countriesJSON["countries"]
         }
-        
-        if (area["substract"] != 1){
-            gravity[0] += x;
-            gravity[1] += y;
-        }
-    }
-
-    ctx.closePath();
-    var nbPoints = points.length;
-    gravity[0] /= nbPoints;
-    gravity[1] /= nbPoints;
-    
-    return {"limit": curLimit, "gravity": gravity};
-}
-
-function writeName(area, gravity, limit, name){
-    if (((limit["maxX"]-limit["minX"]) >= minNameSize) && ((limit["maxY"]-limit["minY"]) >= minNameSize)){
-        ctx.font = nameFontSize + 'px Arial';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = "black";
-        ctx.textAlign = 'center';
-        ctx.fillText(name, gravity[0], gravity[1]);
-    }
-}
-
-function draw(scope) {
-    ctx.clearRect(0, 0, getCanvasSize(0), getCanvasSize(1));
-    ctx.lineWidth = 2;
-    var countries = countriesJSON["countries"]
-    for (var countryIndex=0; countryIndex < countries.length; countryIndex++){
-        var country=countries[countryIndex];
-        var areas=country["areas"];
-        
-        for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
-            var area=areas[areaIndex];
-            ctx.beginPath();
-            var drawingResult=drawShape(area, ctx);
-            
-            var gravity = drawingResult["gravity"];
-            var curLimit = drawingResult["limit"];
-            
-            var color;              
-            //Selected country
-            if (isACountrySelected(scope)){
-                if (isSelectedCountry(scope, country["id"]) && !scope.selectedArea){
-                    color = selectedColor;
-                }else{
-                    color = unselectedColor;
+        var countries = []
+        for (var countryIndex=0;countryIndex<possibleCountries.length;countryIndex++){
+            var possibleCountry=possibleCountries[countryIndex];
+            var contains=false;
+            for (var pointIndex=0; pointIndex<newArea["points"].length; pointIndex++){
+                var point = newArea["points"][pointIndex];
+                if (countryContainsPoint(point, possibleCountry)){
+                    countries[countries.length]=possibleCountry;
+                    contains=true;
+                    break;
                 }
+            }
+            if (!contains && canvasService.pointBelongsTo(possibleCountry["areas"][0]["points"][0], newArea["points"])){
+                countries[countries.length]=possibleCountry;
+            }
+        }
+        return countries;
+    }
+    /**
+     * Get x and y min and max values of all countries
+     */
+    function getLimits(){
+        var limit = {};
+        var countries = $scope.countriesJSON["countries"]
+        for (var countryIndex=0; countryIndex < countries.length; countryIndex++){
+            var country=countries[countryIndex];
+            var areas=country["areas"];
+            
+            for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
+                var area=areas[areaIndex];
+                var points = area["points"];
+                
+                for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
+                    var point = points[ptIndex];                
+                    canvasService.updateLimit(limit, point);
+                }
+            }
+        }
+        return limit;
+    }
+
+    /**
+     * Compute zoom so that all countries are exactly displayed in the canvas
+     */
+    function setCurrentZoom(){    
+        var limit = getLimits();
+        var countriesWidth = limit["maxX"] - limit["minX"];
+        var canvasWidth=getCanvasSize(0);
+        var canvasHeight=getCanvasSize(1);
+        var zoomX=canvasWidth/countriesWidth;
+        
+        var countriesHeight = limit["maxY"] - limit["minY"];
+        var zoomY=canvasHeight/countriesHeight;
+        
+        currentZoom = Math.min(zoomX, zoomY);
+        
+        zoomLimits[0] = currentZoom;
+        zoomLimits[1] = currentZoom*2048;
+        offsetInit = [(canvasWidth-(limit["maxX"]+limit["minX"]))/2, (canvasHeight-(limit["maxY"]+limit["minY"]))/2]
+    }
+
+    /**
+     * Zooms in if factor > 1 and zooms out if < 1
+     * @param factor zoom factor
+     */
+    function zoom(factor){
+        var newZoom = currentZoom * factor;
+        if (newZoom >= zoomLimits[0] && newZoom <= zoomLimits[1]){
+            currentZoom = newZoom;
+            offset[0]*=factor;
+            offset[1]*=factor;
+            draw();
+        }
+    }
+
+    /**
+     * Get the width or height of canvas element according to param
+     * @param index if 0, get width if 1 get height
+     * @return the required dimension of the canvas
+     */
+    function getCanvasSize(index){
+        switch (index){
+            case 0: return mapDiv.clientWidth;
+            case 1: return mapDiv.clientHeight;
+            default: return 0;
+        }
+    }
+
+    /**
+     * Get position in pixels from zoom, movements and relative position of a point
+     * @param tab the point
+     * @param index 0 or 1 for x and y
+     * @return the relative coordinate
+     */
+    function getPositionInPixels(tab, index){
+        return offset[index] + (offsetInit[index] + tab[index])*currentZoom - getCanvasSize(index)*(currentZoom - 1)/2;
+    }
+
+    /**
+     * Get relative position of a point from the position in pixels
+     * @param tab the point
+     * @param index 0 or 1 for x and y
+     * @return the coordinate in pixels
+     */
+    function getRelativePosition(tab, index){
+        return (tab[index] - offset[index] + getCanvasSize(index)*(currentZoom - 1)/2)/currentZoom - offsetInit[index];
+    }
+
+    /**
+     * States whether a country is currently selected
+     * @return true if a country is selected, false otherwise
+     */
+    function isACountrySelected(){
+        return $scope.selectedCountry != undefined;
+    }
+
+    /**
+     * States whether the given country is selected
+     * @param the country whose selection is checked
+     * @return true if the country is selected, false otherwise
+     */
+    function isSelectedCountry(country){
+        return isACountrySelected() && country != undefined && $scope.selectedCountry["id"]==country["id"];
+    }
+
+    /**
+     * States whether an area is currently selected
+     * @return true if an area is selected, false otherwise
+     */
+    function isAnAreaSelected(){
+        return $scope.selectedArea != undefined;
+    }
+
+    /**
+     * States whether the given area is selected
+     * @param the area whose selection is checked
+     * @return true if the area is selected, false otherwise
+     */
+    function isSelectedArea(area){
+        return isAnAreaSelected() && area != undefined && $scope.selectedArea["id"]==area["id"];
+    }
+
+    /**
+     * Draw the given shape in the canvas
+     * @param area the list of points to draw
+     * @return a JSON object containing: the min and max values for x and y for the list of points; the gravity center coordinates
+     */
+    function drawShape(area, keepPathOpen){
+        ctx.beginPath();
+        ctx.lineWidth = 2;
+        var points = area["points"];
+        var gravity = [0, 0];
+        var curLimit = {}
+        
+        for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
+            var point = points[ptIndex];
+            var x = getPositionInPixels(point, 0);
+            var y = getPositionInPixels(point, 1);
+                       
+            canvasService.updateLimit(curLimit, [x, y]);
+            
+            if (ptIndex == 0){
+                ctx.moveTo(x, y);
+            }else{
+                ctx.lineTo(x, y);
+            }
+            
+            if (area["substract"] != 1){
+                gravity[0] += x;
+                gravity[1] += y;
+            }
+        }
+
+        if (!keepPathOpen){
+            ctx.closePath();
+        }
+        var nbPoints = points.length;
+        gravity[0] /= nbPoints;
+        gravity[1] /= nbPoints;
+        ctx.stroke();
+        
+        return {"limit": curLimit, "gravity": gravity};
+    }
+
+    /**
+     * Write the given text on canvas centered on a given point. If limits are done, given limits must be at least minNameSize wide
+     * @param text the text to write
+     * @param point the point on which test is centered
+     * @param limit the limits of the text
+     */
+    function writeName(text, point, limit){
+        if (!limit || (((limit["maxX"]-limit["minX"]) >= minNameSize) && ((limit["maxY"]-limit["minY"]) >= minNameSize))){
+            ctx.font = nameFontSize + 'px Arial';
+            ctx.textBaseline = 'middle';
+            ctx.fillStyle = "black";
+            ctx.textAlign = 'center';
+            ctx.fillText(text, point[0], point[1]);
+        }
+    }
+    
+    /**
+     * Get the color of an area, according to the current country/area selection.
+     */
+    function getAreaColor(country, area){
+        var color;
+        if (isACountrySelected()){              
+            //Country is selected
+            if (isSelectedCountry(country) && (!isAnAreaSelected() || $scope.addingRegion)){
+                color = selectedColor;
+            }else{
+                color = unselectedColor;
+            }
+        }else{
+            //Country is not selected
+            if ($scope.addingRegion){
+                //The user is drawing a new region
+                color = unselectedColor;
             }else{
                 if (area["substract"] == 1){
                     color = emptyColor;
@@ -208,77 +316,134 @@ function draw(scope) {
                     color = country["color"];
                 }
             }
-            ctx.fillStyle=color;
-            ctx.fill();
-            ctx.stroke();
+        }
+        return color;
+    }
 
-            if (isSelectedCountry(scope, country["id"])){
-                var subAreas=scope.selectedCountry["areas"];
-                for (var subAreaIndex=0; subAreaIndex<subAreas.length; subAreaIndex++){
-                    ctx.beginPath();
-                    var subArea = subAreas[subAreaIndex];
-                    var subAreaDrawingResult = drawShape(subArea, ctx);
-                    if (scope.selectedArea && scope.selectedArea["name"] == subArea["name"]){
-                        ctx.fillStyle=selectedColor;
-                        ctx.fill();
+    /**
+     * Draw the countries and areas on the canvas
+     */
+    function draw() {
+        ctx.clearRect(0, 0, getCanvasSize(0), getCanvasSize(1));
+        var countries = $scope.countriesJSON["countries"]
+        for (var countryIndex=0; countryIndex < countries.length; countryIndex++){
+            var country=countries[countryIndex];
+            var areas=country["areas"];
+            
+            for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
+                var area=areas[areaIndex];
+                var drawingResult=drawShape(area);
+                
+                var gravity = drawingResult["gravity"];
+                var curLimit = drawingResult["limit"];
+                
+                ctx.fillStyle=getAreaColor(country, area);
+                ctx.fill();
+
+                if (isSelectedCountry(country)){
+                    var subAreas=$scope.selectedCountry["subareas"];
+                    for (var subAreaIndex=0; subAreaIndex<subAreas.length; subAreaIndex++){
+                        var subArea = subAreas[subAreaIndex];
+                        var subAreaDrawingResult = drawShape(subArea);
+                        if (isSelectedArea(subArea)){
+                            ctx.fillStyle=selectedColor;
+                            ctx.fill();
+                        }
+                        writeName(subArea["name"], subAreaDrawingResult["gravity"], subAreaDrawingResult["limit"]);
                     }
-                    writeName(subArea, subAreaDrawingResult["gravity"], subAreaDrawingResult["limit"], subArea["name"]);
-                    ctx.stroke();
+                }else if (area["substract"] != 1){
+                    writeName(country["name"], gravity, curLimit);
                 }
-            }else if (area["substract"] != 1){
-                writeName(area, gravity, curLimit, country["name"]);
+            }
+        }
+        
+        if ($scope.addingRegion){
+            if (newArea["points"].length >= 1){
+                if (newArea["points"].length == 1){
+                    drawCross(newArea["points"][0])
+                }else {
+                    drawShape(newArea, true);
+                }
             }
         }
     }
-}
-
-function move(event, scope){
-    offset[0] += (event.offsetX - initPosition[0]);
-    initPosition[0] = event.offsetX;
-    offset[1] += (event.offsetY - initPosition[1]);
-    initPosition[1] = event.offsetY;
-    draw(scope);
-}
-
-function pointBelongsTo(point, points){
-    //TODO
-    if (point[0] >= getPosition(points[0], 0) && point[0] <= getPosition(points[2], 0)){
-        if (point[1] >= getPosition(points[0], 1) && point[1] <= getPosition(points[2], 1)){
-            return true;
-        }        
+    
+    function drawCross(point){
+        ctx.lineWidth = 1;
+        var x = getPositionInPixels(point, 0);
+        var y = getPositionInPixels(point, 1);
+        ctx.beginPath();
+        ctx.moveTo(x-crossSize, y);
+        ctx.lineTo(x+crossSize, y);
+        ctx.moveTo(x, y-crossSize);
+        ctx.lineTo(x, y+crossSize);
+        ctx.stroke();
     }
-    return 0;
-}
 
-function getAreaPointBelongsTo(country, point){
-    if (country == undefined){
+    /**
+     * Update offset tab according to mouse movement
+     * @param event the mouse move event
+     */
+    function move(event){
+        offset[0] += (event.offsetX - initPosition[0]);
+        initPosition[0] = event.offsetX;
+        offset[1] += (event.offsetY - initPosition[1]);
+        initPosition[1] = event.offsetY;
+        draw();
+    }
+
+    /**
+     * Get the area belonging to a country a point belongs to
+     * @param country the country whose areas are checked
+     * @param point the point that may belong to an area
+     */
+    function getAreaPointBelongsTo(country, point){
+        if (country == undefined){
+            return null;
+        }
+        
+        var areas=country["subareas"];
+        for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
+            var area=areas[areaIndex];
+            var points = area["points"];
+            var belongs = canvasService.pointBelongsTo(point, points);
+            
+            if (belongs == 1){
+                return area;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Get the country a point belongs to
+     * @param point the point that may belong to a country
+     */
+    function getCountryPointBelongsTo(point){
+        var countries=$scope.countriesJSON["countries"];
+        for (var countryIndex=0; countryIndex<countries.length; countryIndex++){
+            var country = countries[countryIndex];
+            
+            if (countryContainsPoint(point, country)){
+                return country;
+            }
+        }
         return null;
     }
     
-    var areas=country["areas"];
-    for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
-        var area=areas[areaIndex];
-        var points = area["points"];
-        var belongs = pointBelongsTo(point, points);
-        
-        if (belongs == 1){
-            return area;
-        }
-    }
-    return null;
-}
-
-function getCountryPointBelongsTo(point){
-    var countries=countriesJSON["countries"];
-    for (var countryIndex=0; countryIndex<countries.length; countryIndex++){
-        var country = countries[countryIndex];
-        
+    /**
+     * Checks that a country contains a point
+     * @param point the point to check
+     * @param country country to check
+     * @param returns true if country countains the point, false otherwise
+     */
+    function countryContainsPoint(point, country){
         var areas=country["areas"];
         var into = 0;
         for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
             var area=areas[areaIndex];
             var points = area["points"];
-            var belongs = pointBelongsTo(point, points);
+            var belongs = canvasService.pointBelongsTo(point, points);
             
             if (belongs == 1){
                 if (area["substract"] == 1){
@@ -289,78 +454,53 @@ function getCountryPointBelongsTo(point){
                 }
             }
         }
-        
-        if (into == 1){
-            return country;
-        }
+        return into;
     }
-    return null;
-}
-
-function display(scope, point){
-    if (isACountrySelected(scope)){
-        var hoveredArea = getAreaPointBelongsTo(scope.selectedCountry, point);
-        scope.hoveredArea = hoveredArea;
-    }else{
-        var hoveredCountry = getCountryPointBelongsTo(point);
-        scope.hoveredCountry = hoveredCountry;
-    }
-}
-
-function select(scope, point){
-    var area = getAreaPointBelongsTo(scope.selectedCountry, point);
-    if (area){
-        scope.selectedArea = area;
-    }else{
-        var country = getCountry(getCountryPointBelongsTo(point));
-        if (country && isSelectedCountry(scope, country["id"]) && !scope.selectedArea){
-            country=null;
-        }
-        scope.selectedArea = null;
-        scope.selectedCountry = country;
-    }
-    draw(scope);
-}
-
-var app = angular.module("myApp",[]);
-app.controller("worldMapController", ['$scope', '$window', function($scope, $window) {
-    canv.width = $window.innerWidth;
-    canv.height = $window.innerHeight;
-    countriesJSON = getCountries();
-    setCurrentZoom();
-    draw($scope);
     
-    $scope.zoomIn = function() {
-        zoom(2, $scope);
+    /**
+     * Get relative point for a pixel point
+     * @param point the point to convert
+     */
+    function getRelativePoint(point){
+        return [getRelativePosition(point, 0), getRelativePosition(point, 1)];
     }
-    $scope.zoomOut = function() {
-        zoom(0.5, $scope);
-    }
-    $scope.move = function(event){
-        if (clickStatus){
-            moveStatus = 1;
-            move(event, $scope);
+
+    /**
+     * Display the country or area been hovered 
+     * @param point the current position of the mouse
+     */
+    function display(point){
+        var relativePoint = getRelativePoint(point);
+        if (isACountrySelected()){
+            var hoveredArea = getAreaPointBelongsTo($scope.selectedCountry, relativePoint);
+            $scope.hoveredArea = hoveredArea;
         }else{
-            display($scope, [event.offsetX, event.offsetY]);
+            var hoveredCountry = getCountryPointBelongsTo(relativePoint);
+            $scope.hoveredCountry = hoveredCountry;
         }
     }
-    $scope.mousedown = function(event){
-        initPosition = [event.offsetX, event.offsetY];
-        clickStatus = 1;
-    }
-    $scope.mouseup = function(event){
-        clickStatus = 0;
-        if (moveStatus == 0){
-            select($scope, [event.offsetX, event.offsetY]);
+
+    /**
+     * Display the country or area been clicked 
+     * @param point the current position of the mouse
+     */
+    function select(point){
+        var relativePoint = getRelativePoint(point);
+        var area = getAreaPointBelongsTo($scope.selectedCountry, relativePoint);
+        if (area){
+            selectArea(area);
         }else{
-            moveStatus = 0;
+            var country = httpService.getCountry(getCountryPointBelongsTo(relativePoint));
+            if (country && isSelectedCountry(country) && !$scope.selectedArea){
+                country=null;
+            }
+            $scope.selectedArea = null;
+            $scope.selectedCountry = country;
         }
+        draw();
     }
-    $scope.setSelectedArea = function(area){
-        $scope.selectedArea=area;
-        draw($scope);
+    
+    function selectArea(area){
+        $scope.selectedArea = httpService.getArea(area);
     }
-    $scope.focusLost = function(){
-        clickStatus = 0;
-    }
-}]);
+});

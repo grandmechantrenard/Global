@@ -8,11 +8,14 @@
         <link rel="stylesheet" type="text/css" href="css/stylesheet.css">
     </head>
 
-    <body>
-        <div ng-app="myApp" ng-controller="worldMapController">
-            <div id="mapButtons">
+    <body ng-app="mapApp">
+        <div ng-controller="worldMapController" ng-model="countriesJSON">
+            <div id="mapButtons" ng-model="addingRegion">
                 <button type="button" class="mapButton" id="zoomInButton" ng-click="zoomIn()" >+</button>
                 <button type="button" class="mapButton" id="zoomOutButton" ng-click="zoomOut()" >-</button>
+                <button type="button" class="mapButton" id="addRegionButton" ng-click="startAddingRegion()" ng-if="!addingRegion" >Add</button>
+                <button type="button" class="mapButton" id="addRegionButton" ng-click="stopAddingRegion(true)" ng-if="addingRegion" >V</button>
+                <button type="button" class="mapButton" id="addRegionButton" ng-click="stopAddingRegion(false)" ng-if="addingRegion" >X</button>
             </div>
             <div id="hoveredCountry">
                 <span ng-model="hoveredCountry" ng-show="hoveredCountry" >Country: {{ hoveredCountry.name }} ; </span>
@@ -23,20 +26,24 @@
             </div>
             <div id="selectedCountry" ng-model="selectedCountry" ng-show="selectedCountry">
                 <p>Selected: {{ selectedCountry.name }}: </p>
-                <p>{{ selectedCountry.receipes }} receipes</p>
-                <ul ng-repeat="area in selectedCountry['areas']">
+                <p>{{ selectedCountry.recipes }} recipes</p>
+                <p>{{ selectedCountry.typicalRecipes }} typical recipes</p>
+                <ul ng-repeat="area in selectedCountry['subareas']">
                     <li>
                         <a ng-click="setSelectedArea(area)" href="">{{ area.name }}</a>
-                        <div class="areaDiv" ng-show="area.name==selectedArea.name">
-                            <p>{{ area.name }}</p>
-                            <p>Receipes: {{ area.receipes }}</p>
-                            <p>Typical receipes: {{ area.name }}</p>
+                        <div class="areaDiv" ng-if="area.name==selectedArea.name">
+                            <p>{{ selectedArea.name }}</p>
+                            <p>Recipes: {{ selectedArea.recipes }}</p>
+                            <p>Typical recipes: {{ selectedArea.typicalRecipes }}</p>
                         </div>
                     </li>
                 </ul>
             </div>
         </div> 
 
+        <script src="js/globalRecipesApp.js" ></script>
+        <script src="js/canvasService.js" ></script>
+        <script src="js/httpService.js" ></script>
         <script src="js/worldMapController.js" ></script>
     </body>
 </html> 
