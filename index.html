@@ -16,6 +16,7 @@
                 <button type="button" class="mapButton" id="addRegionButton" ng-click="startAddingRegion()" ng-if="!addingRegion" >Add</button>
                 <button type="button" class="mapButton" id="addRegionButton" ng-click="stopAddingRegion(true)" ng-if="addingRegion" >V</button>
                 <button type="button" class="mapButton" id="addRegionButton" ng-click="stopAddingRegion(false)" ng-if="addingRegion" >X</button>
+                <button type="button" class="mapButton" id="addRegionButton" ng-click="removeLastNewRegionPoint()" ng-if="addingRegion" >-1</button>
             </div>
             <div id="hoveredCountry">
                 <span ng-model="hoveredCountry" ng-show="hoveredCountry" >Country: {{ hoveredCountry.name }} ; </span>

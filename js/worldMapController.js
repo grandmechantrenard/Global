@@ -81,6 +81,10 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         newArea["points"]=[];
         draw();
     }
+    $scope.removeLastNewRegionPoint = function(){
+        newArea["points"].pop();
+        draw();
+    }
 
     /**
      * Get all the countries an area belongs to
