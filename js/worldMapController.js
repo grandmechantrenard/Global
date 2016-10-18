@@ -282,35 +282,21 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         var points = area["points"];
         var splitPoints=[[], []];
         var lastPoint;
-        var factor;
+        var xMin=getRelativePosition([0], 0);
+        var xMax=getRelativePosition([totalWidth-1], 0);
         
         for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
             var point={"point":points[ptIndex], "groupIndex":0};
-            point["factor"]=Math.floor(getPositionInPixels(point["point"], 0)/totalWidth);
-            if (!factor){
-                factor=point["factor"];
-            }
+            var factor=Math.floor(getPositionInPixels(point["point"], 0)/totalWidth);
+            point["factor"]=factor;
             
-            if (point["factor"] != factor){
-                point["groupIndex"]=1;
-            }
-            
-            
-            if (lastPoint && lastPoint["factor"]!=point["factor"]){
-                var xLast=getRelativePosition([totalWidth*(lastPoint["factor"]-1)], 0);
-                var xCurrent=getRelativePosition([totalWidth*(point["factor"]-1)], 0);
-                if (lastPoint["factor"]<point["factor"]){
-                    xLast-=10;
-                    xCurrent+=10;
-                }else{
-                    xCurrent-=10;
-                    xLast+=10;
-                }
-                var middlePointY=Math.abs(lastPoint["point"][1]+point["point"][1])/2;
-                splitPoints[point["groupIndex"]][splitPoints[point["groupIndex"]].length]=[xCurrent, middlePointY];
-                splitPoints[lastPoint["groupIndex"]][splitPoints[lastPoint["groupIndex"]].length]=[xLast, middlePointY];
+            if (lastPoint && lastPoint["factor"]!=factor){
+                var middlePointY=point["point"][1]+(lastPoint["point"][1]-point["point"][1])*(xMax-point["point"][0])/(lastPoint["point"][0]-point["point"][0]);
+                //var middlePointY=Math.abs(lastPoint["point"][1]+point["point"][1])/2;
+                splitPoints[0][splitPoints[0].length]=[xMax, middlePointY];
+                splitPoints[1][splitPoints[1].length]=[xMin, middlePointY];
             }   
-            splitPoints[point["groupIndex"]][splitPoints[point["groupIndex"]].length]=point["point"];         
+            splitPoints[factor][splitPoints[factor].length]=point["point"];         
             
             lastPoint=point;
         }
@@ -321,7 +307,7 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
             if (splitPoints[groupIndex].length > 0){
                 ctx.beginPath();
                 ctx.lineWidth = 2;
-                drawingResult[groupIndex]=drawShape(splitPoints[groupIndex], area["substract"] == 1);
+                drawingResult[drawingResult.length]=drawShape(splitPoints[groupIndex], area["substract"] == 1);
                 ctx.closePath();
                 if (color){
                     ctx.fillStyle=color;
@@ -441,17 +427,19 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
      * @param event the mouse move event
      */
     function move(offsetX, offsetY){
+        var totalWidth=getCanvasSize(0)*currentZoom/zoomLimits[0];
         offset[0] += (offsetX - initPosition[0]);
+        offset[0] %= totalWidth;
         initPosition[0] = offsetX;
         
-        var newOffset=(offset[1] + offsetY - initPosition[1]);
+        var newOffsetY=(offset[1] + offsetY - initPosition[1]);
         var delta=getCanvasSize(1)*(0.05+(currentZoom/zoomLimits[0]-1)*0.45);
-        if (newOffset<-delta){
+        if (newOffsetY<-delta){
             offset[1] = -delta;
-        }else if (newOffset>delta){
+        }else if (newOffsetY>delta){
             offset[1] = delta;
         }else{
-            offset[1] = newOffset;
+            offset[1] = newOffsetY;
         }
         initPosition[1] = offsetY;
         draw();
