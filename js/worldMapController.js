@@ -14,7 +14,7 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
     var unselectedColor = "#F9F9F9";
     var selectedColor = "#FFFF00";
     var minNameSize = 20;
-    var newArea = {"points": []};
+    var newArea = [];
     var crossSize=4;
     
     canv.width = $window.innerWidth;
@@ -33,9 +33,9 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
     $scope.move = function(event){
         if (clickStatus){
             moveStatus = 1;
-            move(event);
+            move(event.offsetX, event.offsetY);
         }else{
-            display([event.offsetX, event.offsetY]);
+            display(event.offsetX, event.offsetY);
         }
     }
     $scope.mousedown = function(event){
@@ -47,7 +47,7 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         if (moveStatus == 0){
             var clickedPoint=[event.offsetX, event.offsetY];
             if ($scope.addingRegion){
-                newArea["points"][newArea["points"].length]=getRelativePoint(clickedPoint);
+                newArea[newArea.length]=getRelativePoint(clickedPoint);
                 draw();
             }else{
                 select(clickedPoint);
@@ -71,18 +71,18 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         $scope.addingRegion = false;
         if (validate){
             var countries = getCountriesNewAreaBelongsTo();
-            httpService.addNewArea(newArea, countries);
+            //TODO ask user area name
+            var name="newName";
+            httpService.addNewArea(newArea, name, countries);
             if ($scope.selectedCountry){
-                //TODO ask user area name
-                newArea["name"]="newName";
                 $scope.selectedCountry=httpService.getCountry($scope.selectedCountry);
             }
         }
-        newArea["points"]=[];
+        newArea=[];
         draw();
     }
     $scope.removeLastNewRegionPoint = function(){
-        newArea["points"].pop();
+        newArea.pop();
         draw();
     }
 
@@ -100,15 +100,15 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         for (var countryIndex=0;countryIndex<possibleCountries.length;countryIndex++){
             var possibleCountry=possibleCountries[countryIndex];
             var contains=false;
-            for (var pointIndex=0; pointIndex<newArea["points"].length; pointIndex++){
-                var point = newArea["points"][pointIndex];
+            for (var pointIndex=0; pointIndex<newArea.length; pointIndex++){
+                var point = newArea[pointIndex];
                 if (countryContainsPoint(point, possibleCountry)){
                     countries[countries.length]=possibleCountry;
                     contains=true;
                     break;
                 }
             }
-            if (!contains && canvasService.pointBelongsTo(possibleCountry["areas"][0]["points"][0], newArea["points"])){
+            if (!contains && canvasService.pointBelongsTo(possibleCountry["areas"][0]["points"][0], newArea)){
                 countries[countries.length]=possibleCountry;
             }
         }
@@ -150,7 +150,7 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         var countriesHeight = limit["maxY"] - limit["minY"];
         var zoomY=canvasHeight/countriesHeight;
         
-        currentZoom = Math.min(zoomX, zoomY);
+        currentZoom = Math.min(zoomX, zoomY)*0.90;
         
         zoomLimits[0] = currentZoom;
         zoomLimits[1] = currentZoom*2048;
@@ -167,6 +167,8 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
             currentZoom = newZoom;
             offset[0]*=factor;
             offset[1]*=factor;
+            initPosition=[0, 0];
+            move(0, 0);
             draw();
         }
     }
@@ -237,25 +239,19 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
     function isSelectedArea(area){
         return isAnAreaSelected() && area != undefined && $scope.selectedArea["id"]==area["id"];
     }
-
-    /**
-     * Draw the given shape in the canvas
-     * @param area the list of points to draw
-     * @return a JSON object containing: the min and max values for x and y for the list of points; the gravity center coordinates
-     */
-    function drawShape(area, keepPathOpen){
-        ctx.beginPath();
-        ctx.lineWidth = 2;
-        var points = area["points"];
+    
+    function drawShape(points, substract){
         var gravity = [0, 0];
+        var totalWidth=getCanvasSize(0)*currentZoom/zoomLimits[0];
         var curLimit = {}
-        
         for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
             var point = points[ptIndex];
-            var x = getPositionInPixels(point, 0);
+            var x = getPositionInPixels(point, 0)%totalWidth;
             var y = getPositionInPixels(point, 1);
-                       
-            canvasService.updateLimit(curLimit, [x, y]);
+            
+            if (curLimit){
+                canvasService.updateLimit(curLimit, [x, y]);
+            }
             
             if (ptIndex == 0){
                 ctx.moveTo(x, y);
@@ -263,21 +259,79 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
                 ctx.lineTo(x, y);
             }
             
-            if (area["substract"] != 1){
+            if (!substract){
                 gravity[0] += x;
                 gravity[1] += y;
             }
         }
-
-        if (!keepPathOpen){
-            ctx.closePath();
-        }
         var nbPoints = points.length;
-        gravity[0] /= nbPoints;
-        gravity[1] /= nbPoints;
-        ctx.stroke();
-        
+        if (nbPoints>0){
+            gravity[0] /= nbPoints;
+            gravity[1] /= nbPoints;
+        }
         return {"limit": curLimit, "gravity": gravity};
+    }
+
+    /**
+     * Draw the given shape in the canvas
+     * @param area the list of points to draw
+     * @return a JSON object containing: the min and max values for x and y for the list of points; the gravity center coordinates
+     */
+    function drawArea(area, color){
+        var totalWidth=getCanvasSize(0)*currentZoom/zoomLimits[0];
+        var points = area["points"];
+        var splitPoints=[[], []];
+        var lastPoint;
+        var factor;
+        
+        for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
+            var point={"point":points[ptIndex], "groupIndex":0};
+            point["factor"]=Math.floor(getPositionInPixels(point["point"], 0)/totalWidth);
+            if (!factor){
+                factor=point["factor"];
+            }
+            
+            if (point["factor"] != factor){
+                point["groupIndex"]=1;
+            }
+            
+            
+            if (lastPoint && lastPoint["factor"]!=point["factor"]){
+                var xLast=getRelativePosition([totalWidth*(lastPoint["factor"]-1)], 0);
+                var xCurrent=getRelativePosition([totalWidth*(point["factor"]-1)], 0);
+                if (lastPoint["factor"]<point["factor"]){
+                    xLast-=10;
+                    xCurrent+=10;
+                }else{
+                    xCurrent-=10;
+                    xLast+=10;
+                }
+                var middlePointY=Math.abs(lastPoint["point"][1]+point["point"][1])/2;
+                splitPoints[point["groupIndex"]][splitPoints[point["groupIndex"]].length]=[xCurrent, middlePointY];
+                splitPoints[lastPoint["groupIndex"]][splitPoints[lastPoint["groupIndex"]].length]=[xLast, middlePointY];
+            }   
+            splitPoints[point["groupIndex"]][splitPoints[point["groupIndex"]].length]=point["point"];         
+            
+            lastPoint=point;
+        }
+
+        var drawingResult=[];
+        
+        for (var groupIndex=0; groupIndex<splitPoints.length;groupIndex++){
+            if (splitPoints[groupIndex].length > 0){
+                ctx.beginPath();
+                ctx.lineWidth = 2;
+                drawingResult[groupIndex]=drawShape(splitPoints[groupIndex], area["substract"] == 1);
+                ctx.closePath();
+                if (color){
+                    ctx.fillStyle=color;
+                    ctx.fill();
+                }
+                ctx.stroke();
+            }
+        }
+        
+        return drawingResult;
     }
 
     /**
@@ -286,13 +340,17 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
      * @param point the point on which test is centered
      * @param limit the limits of the text
      */
-    function writeName(text, point, limit){
-        if (!limit || (((limit["maxX"]-limit["minX"]) >= minNameSize) && ((limit["maxY"]-limit["minY"]) >= minNameSize))){
-            ctx.font = nameFontSize + 'px Arial';
-            ctx.textBaseline = 'middle';
-            ctx.fillStyle = "black";
-            ctx.textAlign = 'center';
-            ctx.fillText(text, point[0], point[1]);
+    function writeName(text, drawingResult){
+        for (var i=0; i < drawingResult.length; i++){
+            var limit=drawingResult[i]["limit"];
+            var gravity=drawingResult[i]["gravity"];
+            if (!limit || (((limit["maxX"]-limit["minX"]) >= minNameSize) && ((limit["maxY"]-limit["minY"]) >= minNameSize))){
+                ctx.font = nameFontSize + 'px Arial';
+                ctx.textBaseline = 'middle';
+                ctx.fillStyle = "black";
+                ctx.textAlign = 'center';
+                ctx.fillText(text, gravity[0], gravity[1]);
+            }
         }
     }
     
@@ -336,37 +394,31 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
             
             for (var areaIndex=0; areaIndex < areas.length; areaIndex++){
                 var area=areas[areaIndex];
-                var drawingResult=drawShape(area);
-                
-                var gravity = drawingResult["gravity"];
-                var curLimit = drawingResult["limit"];
-                
-                ctx.fillStyle=getAreaColor(country, area);
-                ctx.fill();
+                var drawingResult=drawArea(area, getAreaColor(country, area));
 
                 if (isSelectedCountry(country)){
                     var subAreas=$scope.selectedCountry["subareas"];
                     for (var subAreaIndex=0; subAreaIndex<subAreas.length; subAreaIndex++){
                         var subArea = subAreas[subAreaIndex];
-                        var subAreaDrawingResult = drawShape(subArea);
+                        var color;
                         if (isSelectedArea(subArea)){
-                            ctx.fillStyle=selectedColor;
-                            ctx.fill();
+                            color=selectedColor;
                         }
-                        writeName(subArea["name"], subAreaDrawingResult["gravity"], subAreaDrawingResult["limit"]);
+                        var subAreaDrawingResult = drawArea(subArea, color);
+                        writeName(subArea["name"], subAreaDrawingResult);
                     }
                 }else if (area["substract"] != 1){
-                    writeName(country["name"], gravity, curLimit);
+                    writeName(country["name"], drawingResult);
                 }
             }
         }
         
         if ($scope.addingRegion){
-            if (newArea["points"].length >= 1){
-                if (newArea["points"].length == 1){
-                    drawCross(newArea["points"][0])
+            if (newArea.length >= 1){
+                if (newArea.length == 1){
+                    drawCross(newArea[0])
                 }else {
-                    drawShape(newArea, true);
+                    drawShape(newArea);
                 }
             }
         }
@@ -388,11 +440,20 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
      * Update offset tab according to mouse movement
      * @param event the mouse move event
      */
-    function move(event){
-        offset[0] += (event.offsetX - initPosition[0]);
-        initPosition[0] = event.offsetX;
-        offset[1] += (event.offsetY - initPosition[1]);
-        initPosition[1] = event.offsetY;
+    function move(offsetX, offsetY){
+        offset[0] += (offsetX - initPosition[0]);
+        initPosition[0] = offsetX;
+        
+        var newOffset=(offset[1] + offsetY - initPosition[1]);
+        var delta=getCanvasSize(1)*(0.05+(currentZoom/zoomLimits[0]-1)*0.45);
+        if (newOffset<-delta){
+            offset[1] = -delta;
+        }else if (newOffset>delta){
+            offset[1] = delta;
+        }else{
+            offset[1] = newOffset;
+        }
+        initPosition[1] = offsetY;
         draw();
     }
 
@@ -473,7 +534,8 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
      * Display the country or area been hovered 
      * @param point the current position of the mouse
      */
-    function display(point){
+    function display(offsetX, offsetY){
+    var point=[offsetX, offsetY]
         var relativePoint = getRelativePoint(point);
         if (isACountrySelected()){
             var hoveredArea = getAreaPointBelongsTo($scope.selectedCountry, relativePoint);

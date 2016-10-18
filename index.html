@@ -19,8 +19,8 @@
                 <button type="button" class="mapButton" id="addRegionButton" ng-click="removeLastNewRegionPoint()" ng-if="addingRegion" >-1</button>
             </div>
             <div id="hoveredCountry">
-                <span ng-model="hoveredCountry" ng-show="hoveredCountry" >Country: {{ hoveredCountry.name }} ; </span>
-                <span ng-model="hoveredArea" ng-show="hoveredArea">Area: {{ hoveredArea.name }}</span>
+                <span ng-model="hoveredCountry" ng-show="hoveredCountry" >Country: {{ hoveredCountry.name }} </span>
+                <span ng-model="hoveredArea" ng-show="hoveredArea">; Area: {{ hoveredArea.name }}</span>
             </div>
             <div id="map">
                 <canvas id="board" ng-mousedown="mousedown($event)" ng-mouseup="mouseup($event)" ng-mousemove="move($event)" ng-mouseleave="focusLost()"/>

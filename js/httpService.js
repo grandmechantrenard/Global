@@ -55,7 +55,7 @@ app.service('httpService', function (){
         return null;
     }
     
-    this.addNewArea = function(newArea, countries){
+    this.addNewArea = function(newArea, name, countries){
         //TODO HTTP request
     }
 });
