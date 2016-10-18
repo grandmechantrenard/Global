@@ -271,6 +271,10 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
         }
         return {"limit": curLimit, "gravity": gravity};
     }
+    
+    function getFactor(point, totalWidth){
+        return Math.floor(Math.abs(getPositionInPixels(point, 0)/totalWidth));
+    }
 
     /**
      * Draw the given shape in the canvas
@@ -278,21 +282,23 @@ app.controller('worldMapController', function($scope, $window, canvasService, ht
      * @return a JSON object containing: the min and max values for x and y for the list of points; the gravity center coordinates
      */
     function drawArea(area, color){
-        var totalWidth=getCanvasSize(0)*currentZoom/zoomLimits[0];
         var points = area["points"];
+        var totalWidth=getCanvasSize(0)*currentZoom/zoomLimits[0];
+        if (points.length==0){
+            return;
+        }
         var splitPoints=[[], []];
-        var lastPoint;
+        var lastPoint={"point": points[points.length-1], "factor": getFactor(points[points.length-1], totalWidth)};
         var xMin=getRelativePosition([0], 0);
         var xMax=getRelativePosition([totalWidth-1], 0);
         
         for (var ptIndex=0; ptIndex < points.length; ptIndex++) {
             var point={"point":points[ptIndex], "groupIndex":0};
-            var factor=Math.floor(getPositionInPixels(point["point"], 0)/totalWidth);
+            var factor=getFactor(point["point"], totalWidth);
             point["factor"]=factor;
             
-            if (lastPoint && lastPoint["factor"]!=factor){
+            if (lastPoint["factor"]!=factor){
                 var middlePointY=point["point"][1]+(lastPoint["point"][1]-point["point"][1])*(xMax-point["point"][0])/(lastPoint["point"][0]-point["point"][0]);
-                //var middlePointY=Math.abs(lastPoint["point"][1]+point["point"][1])/2;
                 splitPoints[0][splitPoints[0].length]=[xMax, middlePointY];
                 splitPoints[1][splitPoints[1].length]=[xMin, middlePointY];
             }   
